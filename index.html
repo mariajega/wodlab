@@ -252,6 +252,16 @@ details summary{cursor:pointer;list-style-position:inside}
 .prow:first-of-type{border-top:0}
 .plan-part{margin:16px 2px 8px;font-size:16px;font-weight:800;display:flex;align-items:center}
 .save-bar{position:sticky;bottom:calc(66px + env(safe-area-inset-bottom));z-index:10;padding:8px 0 4px;background:linear-gradient(transparent,var(--bg) 35%)}
+/* Modo gimnasio */
+[data-mode="gym"] .cf-only,[data-mode="cf"] .gym-only{display:none!important}
+[data-form="gym"] .cf-form{display:none!important}
+table.sets{margin-top:8px}
+table.sets th{text-align:center;padding:4px 3px}
+table.sets td{padding:3px;border:0}
+table.sets td.sn{font-weight:800;color:var(--mut);width:46px;text-align:center;vertical-align:middle}
+table.sets td input{padding:9px;text-align:center}
+table.sets td:last-child{width:44px}
+.lib-grp{font-weight:800;font-size:12.5px;margin:14px 0 2px;color:var(--acc);text-transform:uppercase;letter-spacing:.6px}
 .hidden{display:none!important}
 </style>
 </head>
@@ -271,19 +281,19 @@ details summary{cursor:pointer;list-style-position:inside}
     <h2 id="logTitle">Registrar sesión</h2>
 
     <div class="card">
-      <h3>Pegar la pizarra <button class="btn sm ghost" id="btnLogExample">Ejemplo</button></h3>
+      <h3><span><span class="cf-only">Pegar la pizarra</span><span class="gym-only">Pegar tu rutina</span></span> <button class="btn sm ghost" id="btnLogExample">Ejemplo</button></h3>
       <textarea id="logPaste" style="min-height:130px" placeholder="A) Fuerza&#10;Back squat 5x5 @75%&#10;Strict press 4x8&#10;&#10;B) WOD&#10;AMRAP 12'&#10;10 Thrusters 43/30kg&#10;15 Pull-ups"></textarea>
       <div class="row" style="margin-top:8px">
         <button class="btn pri" id="btnParseLog">Interpretar texto</button>
-        <span class="small mut">Detecta la parte A (fuerza/skill) y la B (WOD). Puedes pegar solo una.</span>
+        <span class="small mut cf-only">Detecta la parte A (fuerza/skill) y la B (WOD). Puedes pegar solo una.</span><span class="small mut gym-only">Una línea por ejercicio, p. ej. «Prensa 4x12 100kg».</span>
       </div>
     </div>
 
     <div class="card">
       <h3>Sesión</h3>
       <label>Fecha</label><input type="date" id="fDate">
-      <label>Partes de la sesión (toca para activar/desactivar)</label>
-      <div class="chips" id="fParts">
+      <label class="cf-form">Partes de la sesión (toca para activar/desactivar)</label>
+      <div class="chips cf-form" id="fParts">
         <button class="chip" data-p="A"><span class="part-tag A">A</span>Fuerza / Skill</button>
         <button class="chip" data-p="B"><span class="part-tag B">B</span>WOD</button>
       </div>
@@ -316,8 +326,8 @@ details summary{cursor:pointer;list-style-position:inside}
   <section id="view-plan" class="view">
     <h2>Antes de entrenar</h2>
     <div class="card">
-      <h3>Sesión de hoy (fuerza/skill + WOD)</h3>
-      <select id="planBench"><option value="">— o elige un benchmark —</option></select>
+      <h3>Entrenamiento de hoy</h3>
+      <select id="planBench" class="cf-only"><option value="">— o elige un benchmark —</option></select>
       <textarea id="planText" style="margin-top:8px" style="min-height:120px" placeholder="A) Fuerza&#10;Deadlift 5x3&#10;&#10;B) WOD&#10;For time 21-15-9&#10;Thrusters 43/30kg&#10;Pull-ups"></textarea>
       <button class="btn pri block" id="btnPlan" style="margin-top:8px">Analizar y sugerir</button>
     </div>
@@ -404,7 +414,7 @@ const PATTERNS = { empuje:'Empuje', tiron:'Tirón', sentadilla:'Sentadilla', bis
 const PATTERN_COLORS = { empuje:'#ff9f8a', tiron:'#8ab8ff', sentadilla:'#ffc48a', bisagra:'#b6a4ff', gimnastico:'#6fd3b0', cardio:'#ff8fb0' };
 const WOD_TYPES = ['AMRAP','EMOM','For Time','Chipper','Tabata','Fuerza','Benchmark']; // tipos de la parte B (WOD)
 const PART_A_TYPES = ['Fuerza','Skill','EMOM'];                                       // tipos de la parte A
-const ALL_TYPES = [...WOD_TYPES, 'Skill'];
+const ALL_TYPES = [...WOD_TYPES, 'Skill', 'Hipertrofia', 'Circuito', 'Cardio'];
 const FEELINGS = ['Con energía','Normal','Fatiga','Molestias','Poca motivación','Gran día'];
 const RPE_TXT = {1:'Muy suave',2:'Suave',3:'Ligero',4:'Moderado',5:'Algo duro',6:'Duro',7:'Muy duro',8:'Intenso (2 reps en reserva)',9:'Casi al límite',10:'Máximo'};
 const ZONES = [ // % de FC máx
@@ -603,6 +613,146 @@ function col(name) {
   try { const v = getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim(); return v || '#999999'; } catch (e) { return '#999999'; }
 }
 
+
+/* ---------------------------------------------------------------------
+   2c. MODO GIMNASIO
+   Biblioteca de máquinas y ejercicios de gimnasio. grp = zona, eq = equipo.
+   gymOnly = solo visible en modo gimnasio. Algunos ejercicios de CrossFit
+   se comparten con otro nombre (gymName).
+   --------------------------------------------------------------------- */
+const GYM_TYPES = ['Hipertrofia', 'Fuerza', 'Circuito', 'Cardio'];
+const GYM_GROUPS = ['Pierna', 'Glúteo', 'Pecho', 'Espalda', 'Hombro', 'Brazos', 'Core', 'Cardio'];
+const G = (id, name, aliases, pattern, metric, pri, sec, grp, eq, o = {}) => E(id, name, aliases, pattern, metric, pri, sec, Object.assign({ gym:true, gymOnly:true, grp, eq, ub:12, spr:3 }, o));
+const GYM_EXERCISES = [
+  // Pierna
+  G('g_leg_press','Prensa de piernas',['prensa de piernas','prensa','leg press','prensa inclinada','prensa 45'],'sentadilla','w',['cuadriceps','gluteos'],['isquios','aductores'],'Pierna','Máquina'),
+  G('g_hack','Hack squat',['hack squat','sentadilla hack','hack'],'sentadilla','w',['cuadriceps','gluteos'],['aductores'],'Pierna','Máquina'),
+  G('g_smith_squat','Sentadilla en multipower',['sentadilla en multipower','sentadilla multipower','multipower','smith squat','sentadilla smith'],'sentadilla','w',['cuadriceps','gluteos'],['isquios','lumbar'],'Pierna','Multipower'),
+  G('g_leg_ext','Extensión de cuádriceps',['extension de cuadriceps','extensiones de cuadriceps','extension de piernas','leg extension','cuadriceps en maquina'],'sentadilla','w',['cuadriceps'],[],'Pierna','Máquina'),
+  G('g_leg_curl','Curl femoral tumbado',['curl femoral tumbado','curl femoral','femoral tumbado','leg curl'],'bisagra','w',['isquios'],['gemelos'],'Pierna','Máquina'),
+  G('g_seated_curl','Curl femoral sentado',['curl femoral sentado','femoral sentado','seated leg curl'],'bisagra','w',['isquios'],[],'Pierna','Máquina'),
+  G('g_rdl','Peso muerto rumano',['peso muerto rumano','rumano','rdl','romanian deadlift'],'bisagra','w',['isquios','gluteos'],['lumbar','antebrazos'],'Pierna','Barra / mancuernas'),
+  G('g_bulgarian','Sentadilla búlgara',['sentadilla bulgara','bulgara','bulgarian split squat','split squat'],'sentadilla','w',['cuadriceps','gluteos'],['aductores','isquios'],'Pierna','Mancuernas'),
+  G('g_adductor','Aductores (máquina)',['maquina de aductores','aductores','adductor','aduccion'],'sentadilla','w',['aductores'],[],'Pierna','Máquina'),
+  G('g_calf_stand','Gemelo de pie',['gemelo de pie','gemelos de pie','elevacion de talones','calf raise','gemelos'],'sentadilla','w',['gemelos'],[],'Pierna','Máquina',{ ub:20, spr:2 }),
+  G('g_calf_seat','Gemelo sentado',['gemelo sentado','gemelos sentado','seated calf'],'sentadilla','w',['gemelos'],[],'Pierna','Máquina',{ ub:20, spr:2 }),
+  // Glúteo
+  G('g_hip_thrust','Hip thrust',['hip thrust','empuje de cadera','puente de gluteo con barra'],'bisagra','w',['gluteos'],['isquios'],'Glúteo','Barra / máquina'),
+  G('g_glute_kick','Patada de glúteo',['patada de gluteo','patada gluteo','patada en polea','glute kickback','kickback gluteo'],'bisagra','w',['gluteos'],['isquios'],'Glúteo','Polea / máquina'),
+  G('g_abductor','Abductores (máquina)',['maquina de abductores','abductores','abductor','abduccion'],'bisagra','w',['gluteos'],[],'Glúteo','Máquina'),
+  // Pecho
+  G('g_incline_press','Press inclinado',['press inclinado','press banca inclinado','incline press','incline bench'],'empuje','w',['pecho','hombros'],['triceps'],'Pecho','Barra / mancuernas'),
+  G('g_db_press','Press con mancuernas',['press con mancuernas','press banca mancuernas','press plano mancuernas','dumbbell press','db bench press'],'empuje','w',['pecho','triceps'],['hombros'],'Pecho','Mancuernas'),
+  G('g_chest_press','Press de pecho en máquina',['press de pecho en maquina','press de pecho','press pecho maquina','chest press','maquina de pecho'],'empuje','w',['pecho','triceps'],['hombros'],'Pecho','Máquina'),
+  G('g_flyes','Aperturas con mancuernas',['aperturas con mancuernas','aperturas','flyes','dumbbell fly'],'empuje','w',['pecho'],['hombros'],'Pecho','Mancuernas'),
+  G('g_pec_deck','Contractor (pec deck)',['contractor','pec deck','peck deck','mariposa','maquina contractora'],'empuje','w',['pecho'],['hombros'],'Pecho','Máquina'),
+  G('g_cable_cross','Cruce de poleas',['cruce de poleas','aperturas en polea','crossover','cable crossover'],'empuje','w',['pecho'],['hombros'],'Pecho','Polea'),
+  // Espalda
+  G('g_lat_pull','Jalón al pecho',['jalon al pecho','jalon polea alta','polea al pecho','jalones','jalon','lat pulldown'],'tiron','w',['dorsales','biceps'],['trapecio','antebrazos'],'Espalda','Polea'),
+  G('g_seated_row','Remo en polea baja',['remo en polea baja','remo polea baja','remo gironda','remo sentado','seated cable row'],'tiron','w',['dorsales','trapecio'],['biceps','lumbar'],'Espalda','Polea'),
+  G('g_bb_row','Remo con barra',['remo con barra','barbell row','remo inclinado con barra'],'tiron','w',['dorsales','trapecio'],['biceps','lumbar'],'Espalda','Barra'),
+  G('g_db_row','Remo con mancuerna',['remo con mancuerna','remo mancuerna','remo a una mano','dumbbell row'],'tiron','w',['dorsales'],['biceps','trapecio'],'Espalda','Mancuernas'),
+  G('g_machine_row','Remo en máquina',['remo en maquina','remo maquina','remo hammer','machine row'],'tiron','w',['dorsales','trapecio'],['biceps'],'Espalda','Máquina'),
+  G('g_pullover','Pullover en polea',['pullover en polea','pullover','pulldown brazos rectos','straight arm pulldown'],'tiron','w',['dorsales'],['pecho','triceps'],'Espalda','Polea'),
+  G('g_back_ext','Hiperextensiones',['hiperextensiones','hiperextension','extensiones lumbares','banco lumbar','back extension'],'bisagra','b',['lumbar','gluteos'],['isquios'],'Espalda','Banco',{ bw:.5, ub:15 }),
+  // Hombro
+  G('g_db_shoulder','Press de hombro con mancuernas',['press de hombro con mancuernas','press hombro mancuernas','press militar mancuernas','press arnold','arnold press'],'empuje','w',['hombros','triceps'],['trapecio'],'Hombro','Mancuernas'),
+  G('g_machine_shoulder','Press de hombro en máquina',['press de hombro en maquina','press hombro maquina','shoulder press machine'],'empuje','w',['hombros','triceps'],[],'Hombro','Máquina'),
+  G('g_lat_raise','Elevaciones laterales',['elevaciones laterales','elevacion lateral','laterales','lateral raise'],'empuje','w',['hombros'],['trapecio'],'Hombro','Mancuernas / polea',{ ub:15, spr:2.5 }),
+  G('g_front_raise','Elevaciones frontales',['elevaciones frontales','elevacion frontal','front raise'],'empuje','w',['hombros'],['pecho'],'Hombro','Mancuernas'),
+  G('g_rear_delt','Pájaros (deltoides posterior)',['deltoides posterior','posterior en maquina','pajaros','pajaro','rear delt','reverse fly'],'tiron','w',['hombros','trapecio'],[],'Hombro','Mancuernas / máquina'),
+  G('g_face_pull','Face pull',['face pulls','face pull','tiron a la cara'],'tiron','w',['hombros','trapecio'],['biceps'],'Hombro','Polea'),
+  G('g_shrug','Encogimientos',['encogimientos','encogimiento','shrugs','shrug'],'tiron','w',['trapecio'],['antebrazos'],'Hombro','Mancuernas / barra'),
+  // Brazos
+  G('g_bb_curl','Curl con barra',['curl con barra','curl barra','curl z','barbell curl'],'tiron','w',['biceps'],['antebrazos'],'Brazos','Barra'),
+  G('g_db_curl','Curl con mancuernas',['curl con mancuernas','curl mancuernas','curl de biceps','curl biceps','dumbbell curl'],'tiron','w',['biceps'],['antebrazos'],'Brazos','Mancuernas'),
+  G('g_hammer','Curl martillo',['curl martillo','martillo','hammer curl'],'tiron','w',['biceps','antebrazos'],[],'Brazos','Mancuernas'),
+  G('g_cable_curl','Curl en polea',['curl en polea','curl polea','cable curl'],'tiron','w',['biceps'],['antebrazos'],'Brazos','Polea'),
+  G('g_preacher','Curl predicador',['curl predicador','predicador','curl scott','banco scott','preacher curl'],'tiron','w',['biceps'],[],'Brazos','Máquina'),
+  G('g_tri_push','Extensión de tríceps en polea',['extension de triceps en polea','extension triceps polea','triceps en polea','triceps polea','jalon de triceps','pushdown'],'empuje','w',['triceps'],[],'Brazos','Polea'),
+  G('g_skull','Press francés',['press frances','frances','skull crusher','rompecraneos'],'empuje','w',['triceps'],[],'Brazos','Barra'),
+  G('g_tri_over','Extensión de tríceps tras nuca',['extension de triceps tras nuca','triceps tras nuca','extension por encima de la cabeza','overhead triceps'],'empuje','w',['triceps'],['hombros'],'Brazos','Mancuernas / polea'),
+  // Core
+  G('g_crunch_machine','Crunch en máquina',['crunch en maquina','crunch maquina','crunch en polea','crunch polea','abdominal en maquina','crunch'],'gimnastico','w',['abdomen'],['oblicuos'],'Core','Máquina / polea',{ ub:20, spr:2 }),
+  G('g_leg_raise','Elevación de piernas',['elevacion de piernas','elevaciones de piernas','silla romana','captain chair','leg raises'],'gimnastico','b',['abdomen'],['oblicuos'],'Core','Paralelas',{ bw:.35, ub:15 }),
+  G('g_ab_wheel','Rueda abdominal',['rueda abdominal','ab wheel'],'gimnastico','b',['abdomen'],['lumbar','hombros'],'Core','Rueda',{ bw:.4, ub:10 }),
+  G('g_plank','Plancha (segundos)',['plancha','plank'],'gimnastico','b',['abdomen'],['oblicuos','hombros'],'Core','Peso corporal',{ bw:.05, ub:60, spr:1 }),
+  G('g_woodchop','Leñador en polea',['lenador en polea','lenador','woodchopper','woodchop','giros rusos','russian twist'],'gimnastico','w',['oblicuos'],['abdomen'],'Core','Polea'),
+  // Cardio
+  G('g_treadmill','Cinta de correr',['cinta de correr','cinta','treadmill'],'cardio','c',['cuadriceps','gemelos'],['isquios','gluteos'],'Cardio','Cardio',{ spm:.35, spc:6 }),
+  G('g_elliptical','Elíptica',['eliptica','elliptical'],'cardio','c',['cuadriceps','gluteos'],['isquios','hombros'],'Cardio','Cardio',{ spm:.25, spc:5 }),
+  G('g_spin','Bici estática',['bici estatica','bicicleta estatica','bici de spinning','spinning','stationary bike'],'cardio','c',['cuadriceps'],['gluteos','gemelos'],'Cardio','Cardio',{ spm:.1, spc:4 }),
+  G('g_stair','Escaladora',['escaladora','stairmaster','stair climber'],'cardio','c',['cuadriceps','gluteos'],['gemelos'],'Cardio','Cardio',{ spm:.5, spc:5 })
+];
+/* Ejercicios de CrossFit que también aparecen en el gimnasio (con nombre de gimnasio) */
+Object.entries({
+  back_squat:['Sentadilla con barra','Pierna','Barra'], deadlift:['Peso muerto','Pierna','Barra'], bench_press:['Press banca','Pecho','Barra'],
+  shoulder_press:['Press militar','Hombro','Barra'], pull_up:['Dominadas','Espalda','Barra de dominadas'], push_up:['Flexiones','Pecho','Peso corporal'],
+  ring_dip:['Fondos','Brazos','Paralelas'], goblet_squat:['Sentadilla goblet','Pierna','Mancuerna / kettlebell'], lunge:['Zancadas','Pierna','Mancuernas'],
+  row:['Remo ergómetro','Cardio','Cardio']
+}).forEach(([id, [n, grp, eq]]) => { const e = BASE_EXERCISES.find(x => x.id === id); if (e) Object.assign(e, { gymName:n, gym:true, grp, eq }); });
+
+function isGym() { return !!(S.profile && S.profile.mode === 'gym'); }
+function visibleExercises() { const g = isGym(); return allExercises().filter(e => e.custom ? ((e.mode === 'gym') === g) : (g ? e.gym : !e.gymOnly)); }
+/* Cambia nombres, etiquetas y textos según el modo (CrossFit / gimnasio) */
+function applyMode() {
+  const g = isGym();
+  PART_LABEL.A = g ? 'Rutina' : 'Fuerza / Skill';
+  PATTERNS.gimnastico = g ? 'Core' : 'Gimnástico';
+  document.documentElement.dataset.mode = g ? 'gym' : 'cf';
+  rebuildExercises();
+  const lp = $('#logPaste'), pt = $('#planText');
+  if (lp) lp.placeholder = g ? 'Pierna\nPrensa 4x12 120kg\nExtensión de cuádriceps 3x15 40kg\nCurl femoral 3x12' : "A) Fuerza\nBack squat 5x5 @75%\nStrict press 4x8\n\nB) WOD\nAMRAP 12'\n10 Thrusters 43/30kg\n15 Pull-ups";
+  if (pt) pt.placeholder = g ? 'Espalda\nJalón al pecho 4x10\nRemo en polea baja 4x12\nCurl con mancuernas 3x12' : 'A) Fuerza\nDeadlift 5x3\n\nB) WOD\nFor time 21-15-9\nThrusters 43/30kg\nPull-ups';
+}
+function gymTypeFor(p) {
+  const its = p.exercises.filter(i => EX_MAP[i.exId].metric !== 'c'); if (!its.length) return 'Cardio';
+  const reps = its.flatMap(setRepsList); return (reps.length ? mean(reps) : 10) <= 6 ? 'Fuerza' : 'Hipertrofia';
+}
+/* En el formulario de gimnasio cada ejercicio es una fila con sus series: sl = [{r: reps, w: kg}] */
+function toGymRows(items) {
+  const rows = [];
+  (items || []).forEach(it => {
+    if (it.sl) { rows.push(it); return; }
+    const ex = EX_MAP[it.exId];
+    if (ex && ex.metric === 'c') { rows.push(Object.assign({}, it)); return; }
+    const reps = setRepsList(it), sets = reps.length ? reps.map(r => ({ r:String(r), w:it.weight })) : Array.from({ length: Math.max(1, +it.sets || 1) }, () => ({ r:'', w:it.weight }));
+    const last = rows[rows.length - 1];
+    if (last && last.sl && it.exId && last.exId === it.exId) last.sl.push(...sets);
+    else rows.push({ exId:it.exId, scale:it.scale, raw:it.raw, sl:sets });
+  });
+  return rows;
+}
+function fromGymRows(rows) { // agrupa series iguales seguidas → formato interno (series × reps @ peso)
+  const out = [];
+  rows.forEach(r => {
+    if (!r.sl) { out.push(r); return; }
+    const ex = EX_MAP[r.exId];
+    if (ex && ex.metric === 'c') { out.push({ exId:r.exId, sets:r.sets || 1, dist:r.dist, cal:r.cal }); return; }
+    let cur = null;
+    r.sl.forEach(s => {
+      const rr = String(s.r ?? '').trim(), w = s.w ? +s.w : null;
+      if (cur && cur.reps === rr && (cur.weight || null) === w) cur.sets++;
+      else { cur = { exId:r.exId, sets:1, reps:rr, weight:w, scale:r.scale }; out.push(cur); }
+    });
+  });
+  return out;
+}
+function gymRowHTML(it, i, ex) {
+  const sl = it.sl || (it.sl = [{ r: it.reps || '', w: it.weight }]), L = ex && SCALING[ex.id], bwEx = ex && ex.metric === 'b';
+  const vol = sl.reduce((a, s) => a + (+s.r || 0) * (+s.w || 0), 0);
+  return `<div class="ex-row gym-row"><div class="head"><input class="exname ${ex ? '' : 'unk'}" data-i="${i}" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(ex ? ex.name : (it.raw || ''))}" placeholder="Busca máquina o ejercicio…"><div class="ac" hidden></div>
+    <button class="icon-btn" data-up="${i}" title="Subir">↑</button><button class="icon-btn" data-del="${i}" title="Quitar">×</button></div>
+    ${ex && ex.eq ? `<div class="small mut" style="margin:4px 2px 0">${esc(ex.grp || '')} · ${esc(ex.eq)}</div>` : ''}
+    <table class="sets"><tr><th>Serie</th><th>Reps</th><th>${bwEx ? 'Lastre' : 'Peso'} (${U.label})</th><th></th></tr>
+    ${sl.map((s, j) => `<tr><td class="sn">${j + 1}</td><td><input data-i="${i}" data-s="${j}" data-sk="r" value="${esc(s.r ?? '')}" inputmode="numeric" placeholder="12"></td>
+      <td><input data-i="${i}" data-s="${j}" data-sk="w" value="${esc(U.show(s.w))}" type="number" step="0.5" inputmode="decimal" placeholder="0"></td>
+      <td><button class="icon-btn" data-delset="${i}" data-s="${j}" title="Quitar serie">−</button></td></tr>`).join('')}</table>
+    <div class="row between" style="margin-top:6px"><button class="btn sm" data-addset="${i}">+ Serie</button><span class="small mut">${sl.length} serie${sl.length > 1 ? 's' : ''}${vol ? ' · ' + U.fmt(vol, 0) + ' movidos' : ''}</span></div>
+    ${L ? `<div class="scale-row"><label>Nivel</label><select data-i="${i}" data-k="scale">${L.map((lv, j) => `<option value="${j}" ${scaleOf(it) === j ? 'selected' : ''}>${j === L.length - 1 ? 'Sin ayuda' : lv.n}</option>`).join('')}</select></div>` : ''}
+    <div class="meta">${exMeta(ex)}</div></div>`;
+}
+
 /* ---------------------------------------------------------------------
    3. UTILIDADES
    --------------------------------------------------------------------- */
@@ -658,7 +808,7 @@ function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let
 /* ---------------------------------------------------------------------
    4. ESTADO + ALMACENAMIENTO (IndexedDB con respaldo en memoria)
    --------------------------------------------------------------------- */
-const DEFAULT_PROFILE = { name:'', email:'', weight:62, age:34, hrMax:186, hrRest:58, unit:'kg', sex:'F', oneRM:{}, theme:'soft', cycleTracking:true, driveOn:false, driveClientId:'', onboarded:false };
+const DEFAULT_PROFILE = { name:'', email:'', weight:62, age:34, hrMax:186, hrRest:58, unit:'kg', sex:'F', oneRM:{}, mode:'crossfit', theme:'soft', cycleTracking:true, driveOn:false, driveClientId:'', onboarded:false };
 const S = { profile: null, workouts: [], customEx: [], cycle: { days:{} }, meta: { lastModified:null, lastSync:null, deleted:[] } };
 let EX_MAP = {};
 let ALIAS_INDEX = [];
@@ -706,12 +856,13 @@ async function persistLocal() {
 }
 
 /* Índice de ejercicios: mapa por id + índice de alias para el parser */
-const allExercises = () => BASE_EXERCISES.concat(S.customEx);
+const allExercises = () => BASE_EXERCISES.concat(GYM_EXERCISES, S.customEx);
 function rebuildExercises() {
   EX_MAP = {}; ALIAS_INDEX = [];
   allExercises().forEach(ex => {
+    if (ex.gymName) { if (!ex.cfName) ex.cfName = ex.name; ex.name = isGym() ? ex.gymName : ex.cfName; } // nombre según el modo
     EX_MAP[ex.id] = ex;
-    [ex.name, ...(ex.aliases || [])].forEach(a => {
+    [ex.name, ex.cfName, ex.gymName, ...(ex.aliases || [])].filter(Boolean).forEach(a => {
       const n = normalize(a).trim(); if (!n) return;
       ALIAS_INDEX.push({ a: n, ex, re: new RegExp('(^|[^a-z0-9])' + escapeRe(n) + '(?=$|[^a-z0-9])') });
     });
@@ -719,7 +870,8 @@ function rebuildExercises() {
   // escalados con alias propio ("ring rows" → Pull-up · nivel Ring row)
   Object.entries(SCALING).forEach(([id, L]) => { const ex = EX_MAP[id]; if (!ex) return;
     L.forEach((lv, i) => (lv.a || []).forEach(al => { const n = normalize(al); ALIAS_INDEX.push({ a:n, ex, scale:i, re:new RegExp('(^|[^a-z0-9])' + escapeRe(n) + '(?=$|[^a-z0-9])') }); })); });
-  ALIAS_INDEX.sort((x, y) => y.a.length - x.a.length); // el alias más largo gana ("power clean" antes que "clean")
+  const vis = new Set(visibleExercises().map(e => e.id)); // a igual longitud, gana el ejercicio del modo actual
+  ALIAS_INDEX.sort((x, y) => y.a.length - x.a.length || (vis.has(y.ex.id) - vis.has(x.ex.id))); // el alias más largo gana ("power clean" antes que "clean")
 }
 const exName = id => EX_MAP[id] ? EX_MAP[id].name : id;
 function findExercise(text) {
@@ -885,6 +1037,12 @@ function splitSessionText(text) {
 }
 /* Devuelve {A, B}: cada uno es un WOD interpretado o null */
 function parseSession(text) {
+  if (isGym()) { // en el gimnasio todo es una única rutina
+    const p = parseWodText(text); if (!p.exercises.length) return { A:null, B:null };
+    const first = String(text).split(/\r?\n/).map(l => l.trim()).find(Boolean) || '';
+    if (first && !findExercise(first) && first.length < 40) p.name = first.replace(/[:\-]+$/, '').trim();
+    p.type = gymTypeFor(p); return { A:p, B:null };
+  }
   const sp = splitSessionText(text); let A = null, B = null;
   const has = p => p && p.exercises.length ? p : null;
   if (sp.single != null) { const p = has(parseWodText(sp.single)); if (p) { if (['Fuerza', 'Skill'].includes(p.type) || sp.skill) A = p; else B = p; } }
@@ -1060,7 +1218,7 @@ function scoreKind(type, name) {
   const b = benchByName(name); if (b) return b.score;
   if (type === 'AMRAP') return 'rounds';
   if (type === 'Tabata') return 'reps';
-  if (type === 'Skill') return 'none';
+  if (['Skill', 'Hipertrofia', 'Circuito', 'Cardio'].includes(type)) return 'none';
   if (type === 'Fuerza' || type === 'EMOM') return 'load';
   return 'time';
 }
@@ -1130,7 +1288,7 @@ const _e1rmCache = new WeakMap();
 function e1rmPoints(w) {
   if (_e1rmCache.has(w)) return _e1rmCache.get(w);
   const out = {};
-  if (['Fuerza','EMOM','Skill'].includes(w.type)) {
+  if (['Fuerza','EMOM','Skill','Hipertrofia','Circuito'].includes(w.type)) {
     const lifts = w.exercises.filter(it => EX_MAP[it.exId] && EX_MAP[it.exId].metric === 'w' && !EX_MAP[it.exId].fixed);
     lifts.forEach(it => {
       const wt = +it.weight || 0; if (!wt) return;
@@ -1235,6 +1393,7 @@ function estimateSeconds(wod, perRound) {
 }
 function intensityTarget(type, durSec) {
   const mx = S.profile.hrMax || 190; let lo, hi, rpe, txt;
+  if (type === 'Hipertrofia') return { txt:'Hipertrofia: trabaja a RPE 7-9 (1-3 reps en reserva). La FC no es el objetivo; descansa 60-90 s entre series.', rpe:'7-9', lo:null, hi:null };
   if (type === 'Skill') return { txt:'Skill: calidad técnica por encima de todo. Series cortas, descansa lo necesario y para antes de que la técnica se degrade.', rpe:'5-7', lo:null, hi:null };
   if (type === 'Fuerza') return { txt:'Fuerza: la FC no es el objetivo. Series en RPE 7-8 (1-3 reps en reserva) y descansos de 2-3 min.', rpe:'7-8', lo:null, hi:null };
   if (type === 'Tabata') { lo = .85; hi = .95; rpe = '9'; txt = 'Intervalos cortos al máximo sostenible.'; }
@@ -1261,7 +1420,7 @@ function suggestForWod(wod, opts = {}) {
   // duración estimada
   if (wod.type === 'AMRAP' || isAmrap) { const r = estimateSeconds(wod, true); out.roundSec = r; out.estSec = (wod.cap || 15) * 60; out.estRounds = r ? (wod.cap || 15) * 60 / r : null; }
   else if (wod.type === 'EMOM' || wod.type === 'Tabata') out.estSec = (wod.cap || 10) * 60;
-  else if (!['Fuerza', 'Skill'].includes(wod.type)) out.estSec = estimateSeconds(wod, false);
+  else if (!['Fuerza', 'Skill', 'Hipertrofia', 'Cardio'].includes(wod.type)) out.estSec = estimateSeconds(wod, false);
   const est = out.estSec || 600;
   const ctx = { rpe, stress: stress.count };
 
@@ -1281,7 +1440,7 @@ function suggestForWod(wod, opts = {}) {
         if (!orm) { const last = lastUsed(it.exId); s.weight = it.weight || (last && last.weight) || null; s.why = last ? 'Sin 1RM: basado en la última vez' : 'Sin 1RM ni historial: empieza conservador y apúntalo'; }
         else {
           let lo, hi;
-          if (wod.type === 'Fuerza') { const top = 1 / (1 + (r > 1 ? r : 0) / 30); hi = top * .97; lo = top * .92; s.why = `Fuerza ${it.sets || 1}×${it.reps || r}: inversa de Epley con 1-2 reps en reserva`; }
+          if (wod.type === 'Fuerza' || wod.type === 'Hipertrofia') { const top = 1 / (1 + (r > 1 ? r : 0) / 30); hi = top * .97; lo = top * .92; s.why = `${wod.type} ${it.sets || 1}×${it.reps || r}: inversa de Epley con 1-2 reps en reserva`; }
           else {
             if (r <= 3) { lo = .65; hi = .75; } else if (r <= 6) { lo = .60; hi = .70; } else if (r <= 12) { lo = .55; hi = .65; } else if (r <= 20) { lo = .50; hi = .60; } else { lo = .45; hi = .55; }
             if (wod.type === 'EMOM') { lo += .05; hi += .05; }
@@ -1310,7 +1469,7 @@ function suggestForWod(wod, opts = {}) {
     }
     if (SCALING[it.exId]) s.level = suggestGymLevel(it, wod);
     // 2) Estrategia: partir reps
-    if (ex.metric !== 'c' && !['Fuerza', 'Skill'].includes(wod.type)) {
+    if (ex.metric !== 'c' && !['Fuerza', 'Skill', 'Hipertrofia'].includes(wod.type)) {
       let cap = ex.ub || 10; const p = s.weight && s.orm ? s.weight / s.orm.value : null;
       if (p != null) cap *= p > .75 ? .4 : p > .68 ? .6 : p < .55 ? 1.15 : 1;
       cap *= est < 8 * 60 ? .9 : est < 15 * 60 ? .75 : .6;
@@ -1336,6 +1495,7 @@ function suggestForWod(wod, opts = {}) {
     out.strategy.push(`Ronda estimada ≈ <b>${fmtTime(out.roundSec)}</b> → objetivo realista <b>${Math.floor(out.estRounds * .92) === Math.round(out.estRounds) ? '≈' + Math.round(out.estRounds) : Math.floor(out.estRounds * .92) + '-' + Math.round(out.estRounds)}</b> rondas. Mira el reloj cada ronda y mantén el split.`);
   } else if (wod.type === 'EMOM') out.strategy.push('Cada minuto: trabajo eficiente y respira en el descanso. Si en los primeros 3 min vas al límite, ajusta ya.');
   else if (wod.type === 'Tabata') out.strategy.push('Elige un número de reps que puedas repetir en las 8 rondas (variación ≤ 2 reps). Tu puntuación será la ronda más baja o el total.');
+  else if (wod.type === 'Hipertrofia') out.strategy.push('Hipertrofia: 1-2 series de aproximación en el primer ejercicio; después series a 1-3 reps del fallo, 60-90 s de descanso y bajada controlada (2-3 s). Cuando completes el tope de reps en todas las series, sube peso la próxima vez.');
   else if (wod.type === 'Skill') out.strategy.push('Skill: practica en series cortas y frescas (EMOM o 1 serie cada 90 s). Graba un intento para revisar la técnica.');
   else if (wod.type === 'Fuerza') out.strategy.push('Calienta con 3-4 series de aproximación (40-60-75-85%). Descansa 2-3 min en series pesadas. Si una serie sale a RPE ≥ 9, mantén peso, no subas.');
   else if (out.estSec) {
@@ -1519,11 +1679,11 @@ const countSessions = arr => new Set(arr.map(sessionOf)).size;
 const PART_LABEL = { A:'Fuerza / Skill', B:'WOD' };
 const rpeColor = v => v >= 9 ? 'var(--bad)' : v >= 7 ? 'var(--acc)' : 'var(--ok)';
 function sessionRecords(sid) { return S.workouts.filter(w => sessionOf(w) === sid).sort((a, b) => partOf(a) < partOf(b) ? -1 : partOf(a) > partOf(b) ? 1 : 0); }
-function emptyPart(k) { return { on:true, id:null, name:'', type: k === 'A' ? 'Fuerza' : 'For Time', rx:true, cap:'', exercises:[], res:{ time:'', rounds:'', reps:'', load:'' }, rpe: k === 'A' ? 7 : 8 }; }
+function emptyPart(k) { return { on:true, id:null, name:'', type: k === 'A' ? (isGym() ? 'Hipertrofia' : 'Fuerza') : 'For Time', rx:true, cap:'', exercises:[], res:{ time:'', rounds:'', reps:'', load:'' }, rpe: k === 'A' ? 7 : 8 }; }
 function partFromParsed(k, p) {
   const P = emptyPart(k); if (!p) { P.on = false; return P; }
   let type = p.type || P.type;
-  if (k === 'A' && !PART_A_TYPES.includes(type)) type = p.exercises.every(i => EX_MAP[i.exId].metric === 'w') ? 'Fuerza' : 'Skill';
+  if (k === 'A' && !(isGym() ? GYM_TYPES : PART_A_TYPES).includes(type)) type = isGym() ? gymTypeFor(p) : p.exercises.every(i => EX_MAP[i.exId].metric === 'w') ? 'Fuerza' : 'Skill';
   return Object.assign(P, { name: p.name || '', type, rx: p.rx !== false, cap: p.cap ?? '', exercises: JSON.parse(JSON.stringify(p.exercises)) });
 }
 function partFromWorkout(w) {
@@ -1533,6 +1693,12 @@ function partFromWorkout(w) {
 }
 function newForm(prefill) {
   F = Object.assign({ sid:null, date:todayISO(), period:null, feel:[], notes:'', garmin:null, wodStart:'', wodText:'', parts:{ A:emptyPart('A'), B:emptyPart('B') } }, prefill || {});
+  // Modo gimnasio: una sola parte (rutina) y ejercicios serie a serie. Si editas una sesión de CrossFit con WOD se usa el formulario de CrossFit.
+  F.gym = isGym() && !(F.sid && F.parts.B.on && F.parts.B.exercises.length);
+  if (F.gym) {
+    if (!F.sid) { F.parts.B.on = false; F.parts.A.on = true; if (!GYM_TYPES.includes(F.parts.A.type)) F.parts.A.type = 'Hipertrofia'; }
+    ['A', 'B'].forEach(k => { F.parts[k].exercises = toGymRows(F.parts[k].exercises); });
+  }
   fillForm();
 }
 /* Carga una sesión guardada en el formulario (duplicate = copia para hoy, sin resultados) */
@@ -1546,6 +1712,7 @@ function formFromSession(sid, duplicate) {
   return f;
 }
 function fillForm() {
+  document.documentElement.dataset.form = F.gym ? 'gym' : 'cf';
   $('#fDate').value = F.date; $('#logPaste').value = F.wodText || ''; $('#fNotes').value = F.notes || '';
   $('#logTitle').textContent = F.sid ? 'Editar sesión' : 'Registrar sesión';
   $('#btnCancelEdit').classList.toggle('hidden', !F.sid);
@@ -1558,7 +1725,7 @@ function renderFeelChips() { $('#fFeel').innerHTML = FEELINGS.map(t => `<button 
 function renderPart(k) { $('#part' + k).innerHTML = F.parts[k].on ? partCardHTML(k) : ''; }
 function rpeLabel(v) { return `RPE <b style="color:${rpeColor(v)}">${v}</b> · <span class="mut">${RPE_TXT[v]}</span>`; }
 function partCardHTML(k) {
-  const P = F.parts[k], kind = scoreKind(P.type, P.name), types = k === 'A' ? PART_A_TYPES : WOD_TYPES;
+  const P = F.parts[k], kind = scoreKind(P.type, P.name), types = F.gym ? GYM_TYPES : k === 'A' ? PART_A_TYPES : WOD_TYPES;
   const capLbl = ['AMRAP', 'EMOM', 'Tabata'].includes(P.type) ? 'Duración (min)' : 'Time cap (min)';
   const inp = (f, lbl, val, extra = '') => `<div><label>${lbl}</label><input data-f="${f}" value="${esc(val ?? '')}" ${extra}></div>`;
   let res;
@@ -1566,23 +1733,24 @@ function partCardHTML(k) {
   else if (kind === 'rounds') res = `<div class="grid2">${inp('rounds', 'Rondas', P.res.rounds, 'type="number" inputmode="numeric" min="0"')}${inp('reps', 'Reps extra', P.res.reps, 'type="number" inputmode="numeric" min="0"')}</div>`;
   else if (kind === 'reps') res = inp('reps', 'Reps totales', P.res.reps, 'type="number" inputmode="numeric" min="0"');
   else if (kind === 'load') res = inp('load', `Carga máxima (${U.label})`, P.res.load, 'type="number" step="0.5" inputmode="decimal"');
-  else res = '<p class="small mut" style="margin-top:6px">Skill: sin puntuación. Apunta en notas cómo salió.</p>';
+  else res = `<p class="small mut" style="margin-top:6px">${F.gym ? 'Sin puntuación: tu progreso se mide con los kilos y las repeticiones de cada serie.' : 'Skill: sin puntuación. Apunta en notas cómo salió.'}</p>`;
   const n = P.exercises.length;
   return `<div class="card part-card" data-part="${k}">
     <h3><span style="display:flex;align-items:center"><span class="part-tag ${k}">${k}</span>${PART_LABEL[k]}</span><span class="small mut">${n ? n + ' ejercicio' + (n > 1 ? 's' : '') : ''}</span></h3>
-    <div class="grid2">${inp('name', 'Nombre (opcional)', P.name, `${k === 'B' ? 'list="benchList"' : ''} placeholder="${k === 'A' ? 'Back squat, BMU…' : 'Fran, WOD del día…'}"`)}${inp('cap', capLbl, P.cap, 'type="number" inputmode="decimal" min="0"')}</div>
+    <div class="grid2">${inp('name', 'Nombre (opcional)', P.name, `${k === 'B' ? 'list="benchList"' : ''} placeholder="${F.gym ? 'Pierna, Torso, Empuje…' : k === 'A' ? 'Back squat, BMU…' : 'Fran, WOD del día…'}"`)}${inp('cap', capLbl, P.cap, 'type="number" inputmode="decimal" min="0"')}</div>
     <label>Tipo</label><div class="chips">${types.map(t => `<button class="chip ${P.type === t ? 'on' : ''}" data-t="${t}">${t}</button>`).join('')}</div>
     ${k === 'B' ? `<label>Categoría</label><div class="seg"><button data-v="1" class="${P.rx ? 'on' : ''}">RX</button><button data-v="0" class="${!P.rx ? 'on' : ''}">Escalado</button></div>` : ''}
     <label>Ejercicios</label>
     <div class="exlist">${n ? P.exercises.map(exRowHTML).join('') : '<div class="empty small">Sin ejercicios. Pega la pizarra arriba o añádelos.</div>'}</div>
     <button class="btn block" data-act="addex">+ Añadir ejercicio</button>
-    <p class="small mut" style="margin-top:6px">${k === 'A' ? 'Un ejercicio por fila con series × reps (5×5, 5-5-3-3-1). Si cambias de peso entre series, añádelo varias veces.' : 'Reps admite esquemas (21-15-9). En AMRAP pon las reps de una ronda.'}</p>
+    <p class="small mut" style="margin-top:6px">${F.gym ? 'Apunta cada serie con sus reps y kilos. «+ Serie» copia la anterior.' : k === 'A' ? 'Un ejercicio por fila con series × reps (5×5, 5-5-3-3-1). Si cambias de peso entre series, añádelo varias veces.' : 'Reps admite esquemas (21-15-9). En AMRAP pon las reps de una ronda.'}</p>
     <hr class="sep"><b class="small">Resultado</b>${res}
     <label>${rpeLabel(P.rpe)}</label><input type="range" min="1" max="10" value="${P.rpe}" data-f="rpe">
   </div>`;
 }
 function exRowHTML(it, i) {
   const ex = EX_MAP[it.exId], m = ex ? ex.metric : 'w', L = ex && SCALING[ex.id];
+  if (F && F.gym && m !== 'c') return gymRowHTML(it, i, ex);
   const f = (k, lbl, val, extra = '') => `<div><label>${lbl}</label><input data-i="${i}" data-k="${k}" value="${esc(val ?? '')}" ${extra}></div>`;
   let fields = f('sets', 'Series', it.sets, 'type="number" inputmode="numeric" min="1"');
   if (m === 'c') fields += f('dist', 'Distancia (m)', it.dist, 'type="number" inputmode="numeric"') + f('cal', 'Calorías', it.cal, 'type="number" inputmode="numeric"');
@@ -1600,7 +1768,7 @@ function matchExerciseName(v) { const n = normalize(v).trim(); return allExercis
 function acMatches(q) {
   const n = normalize(q).trim(); if (!n) return [];
   const out = [];
-  allExercises().forEach(ex => {
+  visibleExercises().forEach(ex => {
     const nm = normalize(ex.name), al = (ex.aliases || []).map(normalize);
     const sc = nm.startsWith(n) ? 4 : al.some(a => a.startsWith(n)) ? 3 : nm.includes(n) ? 2 : al.some(a => a.includes(n)) ? 1 : 0;
     if (sc) out.push({ ex, scale:null, sc, label:ex.name });
@@ -1666,7 +1834,7 @@ async function saveForm() {
     const P = F.parts[k];
     return { id: P.id || uid(), created: P.created || t0 + i, session: sid, part: k, date: F.date, name: (P.name || '').trim(), type: P.type,
       rx: k === 'A' ? true : !!P.rx, cap: P.cap === '' || P.cap == null ? null : +P.cap,
-      exercises: P.exercises.map(e => ({ exId:e.exId, sets:+e.sets || 1, reps:String(e.reps ?? '').trim(), weight:e.weight ? round1(+e.weight) : null, dist:e.dist ? +e.dist : null, cal:e.cal ? +e.cal : null, scale: SCALING[e.exId] && e.scale != null && e.scale !== '' ? +e.scale : null })),
+      exercises: (F.gym ? fromGymRows(P.exercises) : P.exercises).map(e => ({ exId:e.exId, sets:+e.sets || 1, reps:String(e.reps ?? '').trim(), weight:e.weight ? round1(+e.weight) : null, dist:e.dist ? +e.dist : null, cal:e.cal ? +e.cal : null, scale: SCALING[e.exId] && e.scale != null && e.scale !== '' ? +e.scale : null })),
       result: resultFromRaw(P), rpe: P.rpe, feel: F.feel, notes: F.notes, garmin: G[k] || null, wodText: F.wodText || '', sample: !!P.sample, updated: Date.now() };
   });
   if (F.garmin && G.A) { const last = recs[recs.length - 1]; last.garminFull = F.garmin; last.wodStart = +F.wodStart; } // para poder re-editar el corte
@@ -1686,6 +1854,7 @@ function bindPartContainer(el) {
   el.addEventListener('focusout', e => { if (e.target.classList.contains('exname')) setTimeout(() => { const b = e.target.parentNode && e.target.parentNode.querySelector('.ac'); if (b) b.hidden = true; }, 280); });
   el.addEventListener('input', e => {
     const c = ctx(e); if (!c) return; const { P } = c, f = e.target.dataset.f, k = e.target.dataset.k;
+    if (e.target.dataset.sk) { const st = P.exercises[+e.target.dataset.i].sl[+e.target.dataset.s]; st[e.target.dataset.sk] = e.target.dataset.sk === 'w' ? U.toKg(e.target.value) : e.target.value; return; }
     if (f === 'name') P.name = e.target.value;
     else if (f === 'cap') P.cap = e.target.value;
     else if (f === 'rpe') { P.rpe = +e.target.value; e.target.previousElementSibling.innerHTML = rpeLabel(P.rpe); }
@@ -1706,11 +1875,11 @@ function bindPartContainer(el) {
       setTimeout(() => { // espera por si se ha tocado una opción del autocompletado
         if (!inp.isConnected) return;
         const it = P.exercises[+inp.dataset.i]; if (!it) return;
-        const exact = allExercises().find(x => normalize(x.name) === normalize(inp.value).trim()), mt = exact ? { ex: exact } : findMatch(inp.value), ex = mt && mt.ex, old = EX_MAP[it.exId];
+        const exact = visibleExercises().find(x => normalize(x.name) === normalize(inp.value).trim()), mt = exact ? { ex: exact } : findMatch(inp.value), ex = mt && mt.ex, old = EX_MAP[it.exId];
         if (ex && ex.id === it.exId && mt.scale == null) { inp.value = ex.name; return; }
         it.exId = ex ? ex.id : ''; it.raw = inp.value; it.scale = mt && mt.scale != null ? mt.scale : null;
         if (it.scale != null && k === 'B' && P.rx) { P.rx = false; toast('WOD marcado como Escalado'); }
-        if (ex && old && old.metric === ex.metric && !SCALING[ex.id] && !SCALING[old.id]) { inp.value = ex.name; inp.classList.remove('unk'); inp.closest('.ex-row').querySelector('.meta').innerHTML = exMeta(ex); }
+        if (!F.gym && ex && old && old.metric === ex.metric && !SCALING[ex.id] && !SCALING[old.id]) { inp.value = ex.name; inp.classList.remove('unk'); inp.closest('.ex-row').querySelector('.meta').innerHTML = exMeta(ex); }
         else renderPart(k);
       }, 220);
     }
@@ -1722,6 +1891,9 @@ function bindPartContainer(el) {
   });
   el.addEventListener('click', e => {
     const c = ctx(e); if (!c) return; const { k, P } = c;
+    const as = e.target.closest('[data-addset]'), dset = e.target.closest('[data-delset]');
+    if (as) { const it = P.exercises[+as.dataset.addset], sl = it.sl || (it.sl = []), last = sl[sl.length - 1]; sl.push(last ? { r:last.r, w:last.w } : { r:'', w:null }); renderPart(k); return; }
+    if (dset) { const it = P.exercises[+dset.dataset.delset]; it.sl.splice(+dset.dataset.s, 1); if (!it.sl.length) it.sl.push({ r:'', w:null }); renderPart(k); return; }
     const acb = e.target.closest('[data-ac]');
     if (acb) { const it = P.exercises[+acb.dataset.i]; it.exId = acb.dataset.ac; it.scale = acb.dataset.sc === '' ? null : +acb.dataset.sc; it.raw = '';
       if (it.scale != null && k === 'B' && P.rx) { P.rx = false; toast('WOD marcado como Escalado'); } renderPart(k); return; }
@@ -1730,7 +1902,7 @@ function bindPartContainer(el) {
     else if (rx) { P.rx = rx.dataset.v === '1'; renderPart(k); }
     else if (d) { P.exercises.splice(+d.dataset.del, 1); renderPart(k); }
     else if (u && +u.dataset.up > 0) { const i = +u.dataset.up; [P.exercises[i - 1], P.exercises[i]] = [P.exercises[i], P.exercises[i - 1]]; renderPart(k); }
-    else if (add) { P.exercises.push({ exId:'', sets:1, reps:'', weight:null, dist:null, cal:null }); renderPart(k); const ins = $$('.exname', $('#part' + k)); if (ins.length) ins[ins.length - 1].focus(); }
+    else if (add) { P.exercises.push(F.gym ? { exId:'', sl:[{ r:'', w:null }] } : { exId:'', sets:1, reps:'', weight:null, dist:null, cal:null }); renderPart(k); const ins = $$('.exname', $('#part' + k)); if (ins.length) ins[ins.length - 1].focus(); }
   });
 }
 function bindLogForm() {
@@ -1742,10 +1914,11 @@ function bindLogForm() {
       if (ps[k]) F.parts[k] = Object.assign(partFromParsed(k, ps[k]), { id: F.parts[k].id, created: F.parts[k].created });
       else if (!F.parts[k].exercises.length) F.parts[k].on = false;
     });
+    if (F.gym) ['A', 'B'].forEach(k => { F.parts[k].exercises = toGymRows(F.parts[k].exercises); });
     F.wodText = txt; fillForm();
     toast('Interpretado: ' + [ps.A ? `A (${ps.A.exercises.length} ej.)` : '', ps.B ? `WOD (${ps.B.exercises.length} ej.)` : ''].filter(Boolean).join(' + ') + ' · revisa y corrige');
   };
-  $('#btnLogExample').onclick = () => { $('#logPaste').value = 'A) Fuerza\nBack squat 5x5 @75%\nStrict press 4x8\n\nB) WOD\n3 rounds for time\n400m run\n21 kettlebell swings 24/16kg\n12 pull-ups\nTime cap 15\''; };
+  $('#btnLogExample').onclick = () => { $('#logPaste').value = isGym() ? 'Pierna\nPrensa 4x12 120kg\nSentadilla búlgara 3x10 12kg\nCurl femoral 3x12 35kg\nGemelo de pie 4x15 60kg' : 'A) Fuerza\nBack squat 5x5 @75%\nStrict press 4x8\n\nB) WOD\n3 rounds for time\n400m run\n21 kettlebell swings 24/16kg\n12 pull-ups\nTime cap 15\''; };
   $('#fParts').onclick = e => { const b = e.target.closest('[data-p]'); if (!b) return; const k = b.dataset.p; F.parts[k].on = !F.parts[k].on; renderPartsToggle(); renderPart(k); renderGarminPreview(); };
   $('#fFeel').onclick = e => { const b = e.target.closest('[data-f]'); if (!b) return; const t = b.dataset.f; F.feel = F.feel.includes(t) ? F.feel.filter(x => x !== t) : [...F.feel, t]; renderFeelChips(); };
   bindPartContainer($('#partA')); bindPartContainer($('#partB'));
@@ -1957,7 +2130,7 @@ function renderDashboard() {
   // Resumen
   const colS = (tit, cls, arr, empty) => `<div class="summary-col"><h4 class="${cls}">${tit}</h4><ul>${arr.length ? arr.slice(0, 6).map(x => `<li>${x}</li>`).join('') : `<li class="mut">${empty}</li>`}</ul></div>`;
   h += `<div class="card"><h3>Resumen del coach</h3>${colS('▲ Qué mejora', 'ok', summ.improving, 'Aún sin tendencias claras: repite WODs y levantamientos.')}<hr class="sep">${colS('■ Qué está estancado', 'warn', summ.stagnant, 'Nada estancado. ¡Bien!')}<hr class="sep">${colS('● Qué estás descuidando', 'bad', summ.neglected, 'Entrenamiento equilibrado.')}</div>`;
-  h += gymCardHTML();
+  if (!isGym()) h += gymCardHTML();
   // 1RM
   const exWith = Object.keys(best).filter(id => EX_MAP[id]).sort((a, b) => exName(a).localeCompare(exName(b)));
   if (!DASH.ex || !exWith.includes(DASH.ex)) DASH.ex = exWith.includes('back_squat') ? 'back_squat' : exWith[0];
@@ -1970,7 +2143,7 @@ function renderDashboard() {
   const named = {}; S.workouts.filter(w => w.name).forEach(w => { const k = normalize(w.name).replace(/[^a-z0-9]/g, ''); (named[k] = named[k] || []).push(w); });
   const bKeys = Object.keys(named).sort((a, b) => (BENCHMARKS[b] ? 1 : 0) - (BENCHMARKS[a] ? 1 : 0) || a.localeCompare(b));
   if (!DASH.bench || !named[DASH.bench]) DASH.bench = bKeys.find(k => named[k].length > 1) || bKeys[0];
-  h += `<div class="card"><h3>Benchmarks y WODs repetidos</h3>${bKeys.length ? `<div class="tbl-wrap"><table><tr><th>WOD</th><th>Mejor</th><th>Último</th><th>Veces</th></tr>${bKeys.map(k => { const g = named[k].sort(byDate), kind = wKind(g[0]); const bw = g.filter(w => scoreValue(w) != null).reduce((b, w) => !b || isBetter(kind, scoreValue(w), scoreValue(b)) ? w : b, null);
+  if (!isGym()) h += `<div class="card"><h3>Benchmarks y WODs repetidos</h3>${bKeys.length ? `<div class="tbl-wrap"><table><tr><th>WOD</th><th>Mejor</th><th>Último</th><th>Veces</th></tr>${bKeys.map(k => { const g = named[k].sort(byDate), kind = wKind(g[0]); const bw = g.filter(w => scoreValue(w) != null).reduce((b, w) => !b || isBetter(kind, scoreValue(w), scoreValue(b)) ? w : b, null);
       return `<tr data-bench="${k}" style="cursor:pointer;${k === DASH.bench ? 'color:var(--acc)' : ''}"><td><b>${esc(g[0].name)}</b>${BENCHMARKS[k] ? ' <span class="badge">Girl/Hero</span>' : ''}</td><td>${bw ? fmtResult(bw) : '—'}</td><td>${fmtResult(g[g.length - 1])}</td><td>${g.length}</td></tr>`; }).join('')}</table></div>
       <div class="chart-box sm" style="margin-top:10px"><canvas id="cBench"></canvas></div>` : '<div class="empty small">Pon nombre a tus WODs (Fran, Cindy…) para seguir su histórico.</div>'}
       <p class="small mut" style="margin-top:6px">Benchmarks disponibles: ${Object.values(BENCHMARKS).map(b => b.name).join(', ')}.</p></div>`;
@@ -2031,7 +2204,7 @@ function renderDashboard() {
 /* ---------- 10.8 Perfil, biblioteca y datos ---------- */
 function renderProfile() {
   const p = S.profile, v = $('#view-prof');
-  const lifts = allExercises().filter(e => e.metric === 'w' && !e.fixed);
+  const lifts = visibleExercises().filter(e => e.metric === 'w' && !e.fixed);
   const isFile = location.protocol === 'file:';
   const driveBox = p.driveOn
     ? `<div class="alert ok"><span class="ic">☁</span><div style="flex:1">Sincronización activa${p.email ? ' con <b>' + esc(p.email) + '</b>' : ''}. En tu Drive verás el archivo <b>wodlab-datos.json</b>.<br><span class="small mut">${esc(Drive.statusLine())}</span></div></div>
@@ -2063,7 +2236,9 @@ function renderProfile() {
     <div><label>Pesos RX</label><div class="seg" id="pSex"><button data-s="F" class="${p.sex === 'F' ? 'on' : ''}">Mujer</button><button data-s="M" class="${p.sex === 'M' ? 'on' : ''}">Hombre</button></div></div></div>
     <div class="small mut" style="margin-top:12px">Zonas (FC máx ${p.hrMax}): ${ZONES.map(Z => `<span style="color:${Z.c}">${Z.z} ${Math.round(Z.lo * p.hrMax)}${Z.hi < 1.4 ? '–' + Math.round(Z.hi * p.hrMax) : '+'}</span>`).join(' · ')}</div>
   </div>
-  <div class="card"><h3>Apariencia y ciclo</h3>
+  <div class="card"><h3>Modo, apariencia y ciclo</h3>
+    <label>Tipo de entrenamiento</label><div class="seg" id="pMode"><button data-md="crossfit" class="${!isGym() ? 'on' : ''}">CrossFit</button><button data-md="gym" class="${isGym() ? 'on' : ''}">Gimnasio</button></div>
+    <p class="small mut" style="margin-top:6px">${isGym() ? 'Máquinas y ejercicios de gimnasio; registras cada serie con sus reps y kilos.' : 'Biblioteca CrossFit: sesiones de fuerza/skill + WOD.'} Tu historial es el mismo en los dos modos.</p>
     <label>Tema</label><div class="seg" id="pTheme"><button data-t="soft" class="${p.theme !== 'light' ? 'on' : ''}">Oscuro suave</button><button data-t="light" class="${p.theme === 'light' ? 'on' : ''}">Claro</button></div>
     <div class="switch" style="margin-top:8px"><div><b>Registrar mi ciclo menstrual</b><div class="small mut">Marca la regla en el calendario o al registrar la sesión</div></div><input type="checkbox" class="tg" id="pCycle" ${p.cycleTracking ? 'checked' : ''}></div>
     ${p.cycleTracking ? `<div class="small">${periodStarts().length ? `Ciclo medio <b>${avgCycleLen()} días</b>${nextPeriodDate() ? ` · próxima regla prevista <b>${fmtShort(nextPeriodDate())}</b>` : ''}` : '<span class="mut">Aún no has marcado ningún día de regla.</span>'}</div>
@@ -2074,7 +2249,7 @@ function renderProfile() {
     <table><tr><th>Ejercicio</th><th style="width:105px">1RM</th><th>Estimado</th></tr>${lifts.map(e => { const est = est1RM(e.id);
       return `<tr><td>${esc(e.name)}</td><td><input type="number" step="0.5" inputmode="decimal" data-orm="${e.id}" value="${U.show(p.oneRM[e.id])}" style="padding:7px 9px"></td><td class="small ${est && est.source !== 'perfil' ? 'acc' : 'mut'}">${est ? U.fmt(est.value) + '<br><span class="mut">' + esc(est.source) + '</span>' : '—'}</td></tr>`; }).join('')}</table>
   </div>
-  <div class="card"><h3>Biblioteca de ejercicios <span class="small mut">${allExercises().length}</span></h3>
+  <div class="card"><h3>${isGym() ? 'Máquinas y ejercicios' : 'Biblioteca de ejercicios'} <span class="small mut">${visibleExercises().length}</span></h3>
     <input id="libSearch" placeholder="Buscar ejercicio o músculo…">
     <div id="libList" style="max-height:340px;overflow-y:auto;margin-top:8px;-webkit-overflow-scrolling:touch"></div>
     <details style="margin-top:12px"><summary class="btn sm">+ Añadir ejercicio nuevo</summary>
@@ -2083,6 +2258,7 @@ function renderProfile() {
       <label>Alias para el texto de la pizarra (separados por coma)</label><input id="nxAlias" placeholder="sandbag clean, sb clean">
       <div class="grid2"><div><label>Patrón</label><select id="nxPat">${Object.entries(PATTERNS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></div>
       <div><label>Medida</label><select id="nxMet"><option value="w">Reps + peso</option><option value="b">Reps (peso corporal)</option><option value="c">Distancia / calorías</option></select></div></div>
+      ${isGym() ? `<div class="grid2"><div><label>Zona</label><select id="nxGrp">${GYM_GROUPS.map(g => `<option>${g}</option>`).join('')}</select></div><div><label>Equipo</label><select id="nxEq">${['Máquina', 'Polea', 'Mancuernas', 'Barra', 'Multipower', 'Peso corporal', 'Cardio', 'Otro'].map(g => `<option>${g}</option>`).join('')}</select></div></div>` : ''}
       <label>Músculos principales</label><div class="chips" id="nxPri">${Object.entries(MUSCLES).map(([k, l]) => `<button class="chip" data-m="${k}">${l}</button>`).join('')}</div>
       <label>Músculos secundarios</label><div class="chips" id="nxSec">${Object.entries(MUSCLES).map(([k, l]) => `<button class="chip" data-m="${k}">${l}</button>`).join('')}</div>
       <button class="btn pri block" id="nxSave" style="margin-top:12px">Guardar ejercicio</button></div></details>
@@ -2110,6 +2286,8 @@ function renderProfile() {
   $('#pHrCalc').onclick = () => { if (!p.age) { toast('Introduce tu edad'); return; } p.hrMax = Math.round(208 - .7 * p.age); save(); renderProfile(); toast('FC máx estimada: ' + p.hrMax); };
   $('#pUnit').onclick = e => { const b = e.target.closest('[data-u]'); if (!b) return; p.unit = b.dataset.u; save(); renderProfile(); if (F) fillForm(); };
   $('#pSex').onclick = e => { const b = e.target.closest('[data-s]'); if (!b) return; p.sex = b.dataset.s; save(); renderProfile(); };
+  $('#pMode').onclick = e => { const b = e.target.closest('[data-md]'); if (!b || b.dataset.md === (p.mode || 'crossfit')) return;
+    p.mode = b.dataset.md; F = null; applyMode(); save(); renderProfile(); toast(isGym() ? 'Modo gimnasio activado' : 'Modo CrossFit activado'); };
   $('#pTheme').onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; p.theme = b.dataset.t; applyTheme(); save(); renderProfile(); };
   $('#pCycle').onchange = e => { p.cycleTracking = e.target.checked; save(); renderProfile(); };
   const pc = $('#pCal'); if (pc) pc.onclick = () => { setHistMode('cal'); showView('hist'); };
@@ -2121,7 +2299,7 @@ function renderProfile() {
     const pri = $$('#nxPri .on').map(b => b.dataset.m), sec = $$('#nxSec .on2').map(b => b.dataset.m);
     if (!pri.length) { toast('Elige al menos un músculo principal'); return; }
     const id = 'c_' + normalize(name).replace(/[^a-z0-9]+/g, '_') + '_' + uid().slice(-3), met = $('#nxMet').value;
-    S.customEx.push(E(id, name, $('#nxAlias').value.split(',').map(s => s.trim()).filter(Boolean), $('#nxPat').value, met, pri, sec, { custom:true, bw: met === 'b' ? .6 : 0, spm:.3, spc:4 }));
+    S.customEx.push(E(id, name, $('#nxAlias').value.split(',').map(s => s.trim()).filter(Boolean), $('#nxPat').value, met, pri, sec, { custom:true, bw: met === 'b' ? .6 : 0, spm:.3, spc:4, mode: isGym() ? 'gym' : 'cf', gym: isGym(), gymOnly: isGym(), grp: isGym() ? $('#nxGrp').value : undefined, eq: isGym() ? $('#nxEq').value : undefined }));
     rebuildExercises(); fillStaticLists(); await persist(); renderProfile(); toast('Ejercicio añadido');
   };
   $('#libList').onclick = async e => {
@@ -2136,19 +2314,22 @@ function renderProfile() {
   $('#dWipe').onclick = async () => {
     if (!(await uiConfirm('¿Borrar todos los entrenamientos, ejercicios propios y días de ciclo? No se puede deshacer.', 'Borrar todo', true))) return;
     markDeleted(S.workouts); S.workouts = []; S.customEx = []; S.cycle = { days:{} };
-    S.profile = Object.assign(JSON.parse(JSON.stringify(DEFAULT_PROFILE)), { name:p.name, email:p.email, theme:p.theme, cycleTracking:p.cycleTracking, driveOn:p.driveOn, driveClientId:p.driveClientId, onboarded:true });
+    S.profile = Object.assign(JSON.parse(JSON.stringify(DEFAULT_PROFILE)), { name:p.name, email:p.email, mode:p.mode, theme:p.theme, cycleTracking:p.cycleTracking, driveOn:p.driveOn, driveClientId:p.driveClientId, onboarded:true });
     rebuildExercises(); fillStaticLists(); await persist(); toast('Datos borrados'); renderProfile();
   };
 }
 function renderLibrary() {
-  const q = normalize(($('#libSearch') || {}).value || '').trim();
-  const arr = allExercises().filter(e => !q || normalize([e.name, ...e.aliases, ...e.primary.map(m => MUSCLES[m]), ...e.secondary.map(m => MUSCLES[m]), PATTERNS[e.pattern]].join(' ')).includes(q));
-  $('#libList').innerHTML = arr.map(e => `<div class="list-item"><div style="flex:1"><b>${esc(e.name)}</b> <span class="badge" style="color:${PATTERN_COLORS[e.pattern]}">${PATTERNS[e.pattern]}</span>
+  const q = normalize(($('#libSearch') || {}).value || '').trim(), g = isGym();
+  const arr = visibleExercises().filter(e => !q || normalize([e.name, ...e.aliases, e.grp || '', e.eq || '', ...e.primary.map(m => MUSCLES[m]), ...e.secondary.map(m => MUSCLES[m]), PATTERNS[e.pattern]].join(' ')).includes(q));
+  const item = e => `<div class="list-item"><div style="flex:1"><b>${esc(e.name)}</b> ${g && e.eq ? `<span class="badge">${esc(e.eq)}</span>` : `<span class="badge" style="color:${PATTERN_COLORS[e.pattern]}">${PATTERNS[e.pattern]}</span>`}
     <div class="small"><span class="acc">${e.primary.map(m => MUSCLES[m]).join(', ')}</span>${e.secondary.length ? ' · <span class="mut">' + e.secondary.map(m => MUSCLES[m]).join(', ') + '</span>' : ''}</div>
     ${SCALING[e.id] ? `<div class="small mut">Escalados: ${SCALING[e.id].slice(0, -1).map(l => l.n).join(' → ')} → RX</div>` : ''}</div>
-    ${e.custom ? `<button class="icon-btn" data-delex="${e.id}">×</button>` : ''}</div>`).join('') || '<div class="empty small">Sin resultados</div>';
+    ${e.custom ? `<button class="icon-btn" data-delex="${e.id}">×</button>` : ''}</div>`;
+  if (!arr.length) { $('#libList').innerHTML = '<div class="empty small">Sin resultados</div>'; return; }
+  if (!g) { $('#libList').innerHTML = arr.map(item).join(''); return; }
+  const groups = {}; arr.forEach(e => (groups[e.grp || 'Otros'] = groups[e.grp || 'Otros'] || []).push(e));
+  $('#libList').innerHTML = [...GYM_GROUPS, 'Otros'].filter(x => groups[x]).map(x => `<div class="lib-grp">${x} <span class="mut">${groups[x].length}</span></div>${groups[x].map(item).join('')}`).join('');
 }
-
 /* ---------- 10.9 Copias de seguridad (archivo, compartir, Drive) ---------- */
 function backupData() {
   const prof = Object.assign({}, S.profile); delete prof.driveOn;
@@ -2173,7 +2354,7 @@ function applyBackup(d, replace) {
     if (d.profile && !S.profile.name && d.profile.name) S.profile.name = d.profile.name;
   }
   if (!S.cycle.days) S.cycle.days = {};
-  rebuildExercises(); fillStaticLists();
+  applyMode(); fillStaticLists();
 }
 async function exportJSON() {
   const name = `wodlab-copia-${todayISO()}.json`, json = JSON.stringify(backupData());
@@ -2420,7 +2601,7 @@ function bestE1rmUpTo(id, date) {
 function repsPerRound(w) { return w.exercises.reduce((a, it) => a + (EX_MAP[it.exId] && EX_MAP[it.exId].metric !== 'c' ? itemReps(it) : 0), 0); }
 function scoreNum(w) { const v = scoreValue(w); if (v == null) return null; return wKind(w) === 'rounds' ? Math.floor(v / 1000) + (v % 1000) / Math.max(1, repsPerRound(w)) : v; }
 function partPerf(w) {
-  if (['Fuerza', 'EMOM', 'Skill'].includes(w.type)) {
+  if (['Fuerza', 'EMOM', 'Skill', 'Hipertrofia'].includes(w.type)) {
     const vals = Object.entries(e1rmPoints(w)).map(([id, p]) => { const b = bestE1rmUpTo(id, w.date); return b ? p.val / b : null; }).filter(Boolean);
     if (vals.length) return { kind:'fuerza', v: mean(vals) };
     if (w.type !== 'EMOM') return null;
@@ -2599,7 +2780,7 @@ function progressReport() {
     dims.push({ key:'fuerza', label:'Fuerza', v, st:st(v), disp: v == null ? '—' : pct(v), txt: v == null ? 'Sin levantamientos comparables en el periodo.' : `1RM estimado medio ${pct(v)} en ${ch.length} levantamiento${ch.length > 1 ? 's' : ''} (mejor: ${exName(ch[0].id)} ${pct(ch[0].d)}).` }); }
   // 2. WODs repetidos o equivalentes
   const pairs = [];
-  W1.filter(w => !['Fuerza', 'Skill'].includes(w.type)).forEach(w => {
+  W1.filter(w => !['Fuerza', 'Skill', 'Hipertrofia'].includes(w.type)).forEach(w => {
     const a = scoreNum(w); if (a == null) return;
     const prev = similarWorkouts(w).filter(o => byDate(o, w) < 0 && o.rx === w.rx && scoreNum(o) != null).pop(); if (!prev) return;
     const b = scoreNum(prev), d = wKind(w) === 'time' ? (b - a) / b : (a - b) / b;
@@ -2646,7 +2827,7 @@ function progressCardHTML() {
   const ic = { up:'▲', down:'▼', flat:'■', na:'·' };
   return `<div class="card"><h3>¿Estoy mejorando? <span class="small mut">últimos ${R.L} días vs ${R.L} anteriores</span></h3>
     <div class="verdict ${R.verdict.cls}"><div class="big">${R.verdict.t}</div><div class="small" style="margin-top:3px">${R.verdict.sub}</div></div>
-    ${R.dims.map(d => `<div class="prog-row"><div class="prog-ic ${d.st}">${ic[d.st]}</div><div><b>${d.label}</b><div class="small mut">${d.txt}</div></div><div class="small ${d.st === 'up' ? 'ok' : d.st === 'down' ? 'bad' : 'mut'}" style="font-weight:800;text-align:right;white-space:nowrap">${d.disp}</div></div>`).join('')}</div>`;
+    ${R.dims.filter(d => !isGym() || !['wod', 'rx', 'cardio', 'gym'].includes(d.key) || d.st !== 'na').map(d => `<div class="prog-row"><div class="prog-ic ${d.st}">${ic[d.st]}</div><div><b>${d.label}</b><div class="small mut">${d.txt}</div></div><div class="small ${d.st === 'up' ? 'ok' : d.st === 'down' ? 'bad' : 'mut'}" style="font-weight:800;text-align:right;white-space:nowrap">${d.disp}</div></div>`).join('')}</div>`;
 }
 
 /* ---------- 10.14 Listas estáticas y eventos globales ---------- */
@@ -2754,7 +2935,7 @@ async function init() {
   S.customEx = (await DB.get('customEx')) || [];
   S.cycle = (await DB.get('cycle')) || { days:{} }; if (!S.cycle.days) S.cycle.days = {};
   S.meta = Object.assign({ lastModified:null, lastSync:null, deleted:[] }, (await DB.get('meta')) || {});
-  rebuildExercises();
+  applyMode();
   if (!(await DB.get('initialized'))) { loadSampleData(); await persistLocal(); await DB.set('initialized', true); }
   applyTheme(); setupChartDefaults(); fillStaticLists(); bindStatic();
   $('#hdrInfo').textContent = new Date().toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'short' });
